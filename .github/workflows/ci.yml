@@ -31,10 +31,12 @@ jobs:
           config: k8s/kind-config.yaml
           cluster_name: queue-demo
       - run: make build load keda
+       - name: Deploy app
       - run: |
-          kubectl apply -f k8s/namespace.yaml
+           kubectl apply -f k8s/namespace.yaml
           kubectl apply -f k8s/redis.yaml -f k8s/api.yaml -f k8s/worker.yaml -f k8s/scaledobject.yaml
-          kubectl rollout status deploy/api -n queue-demo --timeout=120s
+          kubectl rollout status deploy/redis -n queue-demo --timeout=180s
+          kubectl rollout status deploy/api -n queue-demo --timeout=180s
       - name: Burst and assert workers scale up from zero
         run: |
           ./scripts/burst.sh 60 2
@@ -44,4 +46,10 @@ jobs:
             [ "${n:-0}" -ge 2 ] && exit 0
             sleep 5
           done
-          echo "workers did not scale"; kubectl get scaledobject,hpa,pods -n queue-demo; exit 1
+          echo "workers did not scale"; kubectl get scaledobject,hpa,pods -n queue-demo; exit 1 name: Debug on failure
+        if: failure()
+        run: |
+          kubectl get pods -A -o wide
+          kubectl describe pods -n queue-demo
+          kubectl logs -n queue-demo -l app=api --tail=100 || true
+          kubectl get events -n queue-demo --sort-by=.lastTimestamp
