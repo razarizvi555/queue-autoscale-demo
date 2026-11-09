@@ -11,6 +11,7 @@ spec:
     metadata:
       labels: {app: api}
     spec:
+      enableServiceLinks: false
       containers:
         - name: api
           image: queue-demo-api:dev

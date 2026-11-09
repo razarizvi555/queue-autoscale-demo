@@ -11,6 +11,7 @@ spec:
     metadata:
       labels: {app: worker}
     spec:
+      enableServiceLinks: false
       terminationGracePeriodSeconds: 90   # let in-flight jobs finish on scale-down
       containers:
         - name: worker
