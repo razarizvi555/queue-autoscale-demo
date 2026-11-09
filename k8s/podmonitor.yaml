@@ -1,0 +1,16 @@
+# Lets kube-prometheus-stack scrape worker and API metrics.
+apiVersion: monitoring.coreos.com/v1
+kind: PodMonitor
+metadata:
+  name: queue-demo
+  namespace: queue-demo
+  labels: {release: monitoring}
+spec:
+  selector:
+    matchExpressions:
+      - {key: app, operator: In, values: [worker, api]}
+  podMetricsEndpoints:
+    - port: metrics
+      path: /
+    - port: http
+      path: /metrics/

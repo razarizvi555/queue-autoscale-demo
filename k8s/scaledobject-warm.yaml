@@ -1,0 +1,26 @@
+# Mode B: warm floor during business hours. Costs a little idle capacity,
+# removes the cold start for the first jobs of a burst.
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: worker
+  namespace: queue-demo
+spec:
+  scaleTargetRef:
+    name: worker
+  minReplicaCount: 0
+  maxReplicaCount: 10
+  pollingInterval: 5
+  cooldownPeriod: 60
+  triggers:
+    - type: redis
+      metadata:
+        address: redis.queue-demo.svc.cluster.local:6379
+        listName: jobs
+        listLength: "5"
+    - type: cron           # keep 2 warm workers 8am-8pm Central
+      metadata:
+        timezone: America/Chicago
+        start: 0 8 * * *
+        end: 0 20 * * *
+        desiredReplicas: "2"

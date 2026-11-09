@@ -1,0 +1,25 @@
+# Mode A: scale-to-zero. Cheapest, but every burst pays the cold-start tax.
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: worker
+  namespace: queue-demo
+spec:
+  scaleTargetRef:
+    name: worker
+  minReplicaCount: 0
+  maxReplicaCount: 10
+  pollingInterval: 5       # seconds between queue checks
+  cooldownPeriod: 60       # seconds of empty queue before scaling to zero
+  advanced:
+    horizontalPodAutoscalerConfig:
+      behavior:
+        scaleDown:
+          stabilizationWindowSeconds: 60
+          policies: [{type: Pods, value: 2, periodSeconds: 30}]
+  triggers:
+    - type: redis
+      metadata:
+        address: redis.queue-demo.svc.cluster.local:6379
+        listName: jobs
+        listLength: "5"     # target ~5 queued jobs per worker

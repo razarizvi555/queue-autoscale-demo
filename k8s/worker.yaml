@@ -1,0 +1,32 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: worker
+  namespace: queue-demo
+spec:
+  replicas: 0            # KEDA owns the replica count
+  selector:
+    matchLabels: {app: worker}
+  template:
+    metadata:
+      labels: {app: worker}
+    spec:
+      terminationGracePeriodSeconds: 90   # let in-flight jobs finish on scale-down
+      containers:
+        - name: worker
+          image: queue-demo-worker:dev
+          imagePullPolicy: IfNotPresent
+          ports: [{name: metrics, containerPort: 9100}]
+          env:
+            - {name: REDIS_HOST, value: redis}
+            - {name: QUEUE_NAME, value: jobs}
+            - {name: MODEL_LOAD_SECONDS, value: "20"}   # simulated cold start
+            - {name: WORKER_COST_PER_HOUR, value: "1.10"}
+            - name: POD_NAME
+              valueFrom: {fieldRef: {fieldPath: metadata.name}}
+          resources:
+            requests: {cpu: 100m, memory: 64Mi}
+            limits: {memory: 256Mi}
+          # On a real GPU cluster you would add:
+          #   limits: {nvidia.com/gpu: 1}
+          # plus a toleration for the GPU node taint.

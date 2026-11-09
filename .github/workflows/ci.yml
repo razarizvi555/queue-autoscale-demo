@@ -1,0 +1,47 @@
+name: ci
+on:
+  push:
+  pull_request:
+
+jobs:
+  lint-and-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -r requirements-dev.txt
+      - run: ruff check api worker tests
+      - run: pytest -q
+      - name: Validate Kubernetes manifests
+        run: |
+          curl -sSL https://github.com/yannh/kubeconform/releases/download/v0.6.7/kubeconform-linux-amd64.tar.gz | tar xz
+          ./kubeconform -strict -ignore-missing-schemas -skip Cluster k8s/*.yaml
+      - run: docker build -t queue-demo-api:ci api
+      - run: docker build -t queue-demo-worker:ci worker
+
+  e2e:
+    needs: lint-and-build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: helm/kind-action@v1
+        with:
+          config: k8s/kind-config.yaml
+          cluster_name: queue-demo
+      - run: make build load keda
+      - run: |
+          kubectl apply -f k8s/namespace.yaml
+          kubectl apply -f k8s/redis.yaml -f k8s/api.yaml -f k8s/worker.yaml -f k8s/scaledobject.yaml
+          kubectl rollout status deploy/api -n queue-demo --timeout=120s
+      - name: Burst and assert workers scale up from zero
+        run: |
+          ./scripts/burst.sh 60 2
+          for i in $(seq 1 30); do
+            n=$(kubectl get deploy worker -n queue-demo -o jsonpath='{.status.readyReplicas}')
+            echo "ready workers: ${n:-0}"
+            [ "${n:-0}" -ge 2 ] && exit 0
+            sleep 5
+          done
+          echo "workers did not scale"; kubectl get scaledobject,hpa,pods -n queue-demo; exit 1
