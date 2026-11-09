@@ -31,9 +31,9 @@ jobs:
           config: k8s/kind-config.yaml
           cluster_name: queue-demo
       - run: make build load keda
-       - name: Deploy app
-      - run: |
-           kubectl apply -f k8s/namespace.yaml
+      - name: Deploy app
+        run: |
+          kubectl apply -f k8s/namespace.yaml
           kubectl apply -f k8s/redis.yaml -f k8s/api.yaml -f k8s/worker.yaml -f k8s/scaledobject.yaml
           kubectl rollout status deploy/redis -n queue-demo --timeout=180s
           kubectl rollout status deploy/api -n queue-demo --timeout=180s
@@ -46,7 +46,8 @@ jobs:
             [ "${n:-0}" -ge 2 ] && exit 0
             sleep 5
           done
-          echo "workers did not scale"; kubectl get scaledobject,hpa,pods -n queue-demo; exit 1 name: Debug on failure
+          echo "workers did not scale"; kubectl get scaledobject,hpa,pods -n queue-demo; exit 1
+      - name: Debug on failure
         if: failure()
         run: |
           kubectl get pods -A -o wide
