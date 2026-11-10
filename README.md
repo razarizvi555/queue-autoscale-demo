@@ -64,9 +64,23 @@ Fill this in from your own runs. This section is what reviewers read.
 
 | Scenario | p95 queue wait | Time to first job done | Peak workers | Idle worker-minutes | Notes |
 |---|---|---|---|---|---|
-| Scale to zero, burst of 200 x 3s | | | | | |
+| Scale to zero, burst of 200 x 3s |94 | | | |p95 from raw queue samples; Prometheus histogram estimate (114.9 s) was inflated, see below |
 | Warm floor of 2, same burst | | | | | |
 | listLength 5 vs 20 | | | | | |
+
+## What I learned
+
+**A percentile is only as good as its buckets.** For the scale-to-zero run, Prometheus reported a
+p95 queue wait of 114.9 s, but the entire queue drained in 98 s, so that number could not be right.
+The worker's histogram jumps from 60 s to 120 s, and `histogram_quantile` interpolates inside that
+gap. Because jobs are processed first in, first out, the 95th-percentile job is the one picked up
+when 10 jobs remained in the queue. The raw samples put that at 94 s. Fix: add buckets at 75, 90
+and 105 s, and sanity-check percentiles against an independent measurement before trusting them.
+
+**Kubernetes service links can break configuration.** The first CI run failed because the API
+crashed on startup. Kubernetes injects variables for every Service in the namespace, so a Service
+named `redis` set `REDIS_PORT=tcp://10.96.x.x:6379` and overwrote the plain port number the app
+expected. Fixed with `enableServiceLinks: false` on the pod spec rather than a workaround in code.
 
 ## Design decisions
 
