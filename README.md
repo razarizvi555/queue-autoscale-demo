@@ -60,13 +60,11 @@ Switch autoscaling policy with `make deploy-warm` (warm floor) or `kubectl apply
 
 ## Results
 
-Fill this in from your own runs. This section is what reviewers read.
-
-| Scenario | p95 queue wait | Time to first job done | Peak workers | Idle worker-minutes | Notes |
-|---|---|---|---|---|---|
-| Scale to zero, burst of 200 x 3s |94 | | | |p95 from raw queue samples; Prometheus histogram estimate (114.9 s) was inflated, see below |
-| Warm floor of 2, same burst | | | | | |
-| listLength 5 vs 20 | | | | | |
+| Scenario | p95 queue wait | Time to first job done | Time to drain | Peak workers | Idle worker-minutes | Notes |
+|---|---|---|---|---|---|---|
+| Scale to zero, listLength 5 | 94 s | 25 s | 98 s | 10 (cap) | 1.1 | Prometheus histogram estimate was 114.9 s, inflated by coarse buckets |
+| Warm floor of 2, listLength 5 | 80 s | 3 s | 84 s | 10 (cap) | 3.1 | First result 8x faster; idle cost grows all day |
+| Scale to zero, listLength 20 | 95 s | 26 s | 97 s | 10 (cap) | 0.1 | Same latency as listLength 5 at this burst size; workers released earlier |
 
 ## What I learned
 
@@ -82,6 +80,22 @@ crashed on startup. Kubernetes injects variables for every Service in the namesp
 named `redis` set `REDIS_PORT=tcp://10.96.x.x:6379` and overwrote the plain port number the app
 expected. Fixed with `enableServiceLinks: false` on the pod spec rather than a workaround in code.
 
+**A warm floor trades idle spend for first-response time.** Keeping 2 workers loaded cut time to
+first result from 25 s to 3 s and p95 wait from 94 s to 80 s, because those workers skipped the
+20 s model load. Only 2 of 10 workers were warm, so the rest of the burst still paid cold starts.
+The cost is idle capacity: 3.1 idle worker-minutes in a 2-minute test, and about 120 worker-minutes
+per quiet hour for two always-on workers. On real GPUs, that trade is the main cost decision:
+warm during business hours, scale to zero overnight (the cron trigger in `scaledobject-warm.yaml`).
+
+**listLength mostly controls how early you release workers, not how many you start.** With 200
+queued jobs, both listLength 5 (wants 40 workers) and 20 (wants 10) hit the 10-worker cap, so
+latency was the same (94 s vs 95 s). The difference was at the tail: listLength 20 began
+releasing workers once fewer than ~180 jobs remained, cutting idle time from 1.1 to 0.1
+worker-minutes. A lower listLength only buys lower latency when the cap has headroom.
+
+**KEDA uses two scaling paths.** With minReplicaCount 0, KEDA handles the 0-to-1 activation
+itself using pollingInterval and cooldownPeriod. With a warm floor of 2, those settings are
+ignored and the Kubernetes HPA handles all scaling, which KEDA warns about at apply time.
 ## Design decisions
 
 - **Scale on queue depth, not CPU.** GPU workers are often busy waiting on the device, so CPU is a poor signal. Queue length per worker maps directly to latency.
