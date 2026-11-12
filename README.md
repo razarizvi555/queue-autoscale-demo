@@ -97,6 +97,7 @@ worker-minutes. A lower listLength only buys lower latency when the cap has head
 itself using pollingInterval and cooldownPeriod. With a warm floor of 2, those settings are
 ignored and the Kubernetes HPA handles all scaling, which KEDA warns about at apply time.
 ## Design decisions
+- **Proposal:** see [RFC-001: Scheduled Warm Pools](docs/rfc-001-warm-pool-scheduling.md) for how these results turn into a production change.
 
 - **Scale on queue depth, not CPU.** GPU workers are often busy waiting on the device, so CPU is a poor signal. Queue length per worker maps directly to latency.
 - **Graceful shutdown.** Workers finish the in-flight job on SIGTERM and the pod gets a 90-second grace period, so scale-down never drops work.
